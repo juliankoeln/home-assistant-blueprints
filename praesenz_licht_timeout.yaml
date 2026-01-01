@@ -1,0 +1,51 @@
+blueprint:
+  name: Präsenzgesteuertes Licht (AUS nach Abwesenheit)
+  description: >
+    Schaltet ausgewählte Lichter aus, wenn für eine definierte Zeit
+    keine Präsenz mehr erkannt wurde. Bei erneuter Präsenz bleibt das Licht an.
+  domain: automation
+
+  input:
+    presence_sensors:
+      name: Präsenz- / Bewegungsmelder
+      description: Einer oder mehrere Sensoren (binary_sensor)
+      selector:
+        entity:
+          domain: binary_sensor
+          multiple: true
+
+    target_lights:
+      name: Lichter
+      selector:
+        target:
+          entity:
+            domain: light
+
+    off_delay:
+      name: Abwesenheits-Zeit
+      description: Zeit ohne Präsenz, bis das Licht ausgeschaltet wird
+      default: "01:00:00"
+      selector:
+        duration:
+
+mode: restart
+
+trigger:
+  - platform: state
+    entity_id: !input presence_sensors
+    to: "off"
+
+condition:
+  - condition: template
+    value_template: >
+      {{ expand(presence_sensors) | selectattr('state', 'eq', 'on') | list | count == 0 }}
+
+action:
+  - delay: !input off_delay
+
+  - condition: template
+    value_template: >
+      {{ expand(presence_sensors) | selectattr('state', 'eq', 'on') | list | count == 0 }}
+
+  - service: light.turn_off
+    target: !input target_lights
