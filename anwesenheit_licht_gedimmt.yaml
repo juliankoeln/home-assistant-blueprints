@@ -1,0 +1,128 @@
+blueprint:
+  name: Anwesenheitsabhängige Lichtsteuerung (mit Dimmung)
+  description: >
+    Schaltet Lichter abhängig von der Anwesenheit von zwei Personen.
+    - Wenn beide nicht zu Hause sind → alle Lichter aus
+    - Erste Person kommt heim → Küche + Wohnzimmer an
+    - Zweite Person kommt heim → nur Küche an
+    Nachts werden die Lichter gedimmt.
+  domain: automation
+
+  input:
+    person_1:
+      name: Erste Person
+      selector:
+        entity:
+          domain: person
+
+    person_2:
+      name: Zweite Person
+      selector:
+        entity:
+          domain: person
+
+    light_kitchen:
+      name: Küchenlicht
+      selector:
+        entity:
+          domain: light
+
+    light_livingroom:
+      name: Wohnzimmerlicht
+      selector:
+        entity:
+          domain: light
+
+    brightness_day:
+      name: Helligkeit tagsüber (%)
+      default: 100
+      selector:
+        number:
+          min: 1
+          max: 100
+          unit_of_measurement: "%"
+
+    brightness_night:
+      name: Helligkeit nachts (%)
+      default: 30
+      selector:
+        number:
+          min: 1
+          max: 100
+          unit_of_measurement: "%"
+
+mode: single
+
+trigger:
+  - platform: state
+    entity_id:
+      - !input person_1
+      - !input person_2
+
+variables:
+  brightness: >
+    {% if is_state('sun.sun', 'below_horizon') %}
+      {{ (brightness_night | int * 2.55) | int }}
+    {% else %}
+      {{ (brightness_day | int * 2.55) | int }}
+    {% endif %}
+
+action:
+  - choose:
+
+      # 1️⃣ Beide nicht zu Hause → alles aus
+      - conditions:
+          - condition: state
+            entity_id: !input person_1
+            state: not_home
+          - condition: state
+            entity_id: !input person_2
+            state: not_home
+        sequence:
+          - service: light.turn_off
+            target:
+              entity_id:
+                - !input light_kitchen
+                - !input light_livingroom
+
+      # 2️⃣ Erste Person kommt nach Hause
+      - conditions:
+          - condition: template
+            value_template: >
+              {{
+                trigger.from_state.state == 'not_home'
+                and
+                (
+                  (trigger.entity_id == (person_1) and states(person_2) == 'not_home')
+                  or
+                  (trigger.entity_id == (person_2) and states(person_1) == 'not_home')
+                )
+              }}
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id:
+                - !input light_kitchen
+                - !input light_livingroom
+            data:
+              brightness: "{{ brightness }}"
+
+      # 3️⃣ Zweite Person kommt nach Hause
+      - conditions:
+          - condition: template
+            value_template: >
+              {{
+                trigger.from_state.state == 'not_home'
+                and
+                (
+                  (trigger.entity_id == (person_1) and states(person_2) == 'home')
+                  or
+                  (trigger.entity_id == (person_2) and states(person_1) == 'home')
+                )
+              }}
+        sequence:
+          - service: light.turn_on
+            target:
+              entity_id: !input light_kitchen
+            data:
+              brightness: "{{ brightness }}"
