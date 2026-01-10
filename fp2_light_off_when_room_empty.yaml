@@ -1,0 +1,56 @@
+blueprint:
+  name: FP2 – Licht aus wenn Raum leer (Zonen)
+  description: >
+    Schaltet alle Lichter eines Raums aus, wenn alle angegebenen
+    Aqara FP2 Zonen für eine bestimmte Zeit leer sind.
+    Funktioniert auch bei manuell eingeschaltetem Licht.
+  domain: automation
+
+  input:
+    fp2_zones:
+      name: FP2 Zonen
+      description: Alle Binary-Sensoren der FP2-Zonen im Raum
+      selector:
+        entity:
+          domain: binary_sensor
+          multiple: true
+
+    target_area:
+      name: Raum (Area)
+      description: Raum, dessen Lichter ausgeschaltet werden sollen
+      selector:
+        area:
+
+    wait_time:
+      name: Wartezeit ohne Präsenz
+      description: Zeit, die alle Zonen leer sein müssen
+      default: 5
+      selector:
+        number:
+          min: 1
+          max: 30
+          unit_of_measurement: Minuten
+
+mode: restart
+
+trigger:
+  - platform: state
+    entity_id: !input fp2_zones
+    to: "off"
+    for:
+      minutes: !input wait_time
+
+condition:
+  - condition: template
+    value_template: >
+      {% for zone in expand('!input fp2_zones') %}
+        {% if zone.state != 'off' %}
+          {{ false }}
+        {% endif %}
+      {% endfor %}
+      {{ true }}
+
+action:
+  - service: light.turn_off
+    target:
+      area_id: !input target_area
